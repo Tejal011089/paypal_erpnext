@@ -104,8 +104,15 @@ class PurchaseReceipt(BuyingController):
 			}
 		})
 
-		if cint(frappe.db.get_single_value('Buying Settings', 'maintain_same_rate')):
-			self.validate_rate_with_reference_doc([["Purchase Order", "prevdoc_docname", "prevdoc_detail_docname"]])
+		if cint(frappe.defaults.get_global_default('maintain_same_rate')):
+			super(PurchaseReceipt, self).validate_with_previous_doc({
+				"Purchase Order Item": {
+					"ref_dn_field": "prevdoc_detail_docname",
+					"compare_fields": [["rate", "="]],
+					"is_child_table": True
+				}
+			})
+
 
 	def po_required(self):
 		if frappe.db.get_value("Buying Settings", None, "po_required") == 'Yes':

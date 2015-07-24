@@ -72,19 +72,6 @@ class TestStockEntry(unittest.TestCase):
 		self._test_auto_material_request("_Test Item")
 
 	def test_auto_material_request_for_variant(self):
-		manage_variant = frappe.new_doc("Manage Variants")
-		
-		manage_variant.update({
-			"item_code": "_Test Variant Item",
-			"attributes": [
-				{
-					"attribute": "Test Size",
-					"attribute_value": "Small"
-				}
-			]
-		})
-		manage_variant.generate_combinations()
-		manage_variant.create_variants()
 		self._test_auto_material_request("_Test Variant Item-S")
 
 	def _test_auto_material_request(self, item_code):
@@ -346,7 +333,7 @@ class TestStockEntry(unittest.TestCase):
 		self._test_sales_invoice_return("_Test Item", 5, 2)
 
 	def test_sales_invoice_return_of_packing_item(self):
-		self._test_sales_invoice_return("_Test Product Bundle Item", 25, 20)
+		self._test_sales_invoice_return("_Test Sales BOM Item", 25, 20)
 
 	def _test_delivery_note_return(self, item_code, delivered_qty, returned_qty):
 		from erpnext.stock.doctype.delivery_note.test_delivery_note import create_delivery_note
@@ -381,7 +368,7 @@ class TestStockEntry(unittest.TestCase):
 		self._test_delivery_note_return("_Test Item", 5, 2)
 
 	def test_delivery_note_return_of_packing_item(self):
-		self._test_delivery_note_return("_Test Product Bundle Item", 25, 20)
+		self._test_delivery_note_return("_Test Sales BOM Item", 25, 20)
 
 	def _test_sales_return_jv(self, se):
 		jv = make_return_jv(se.name)
@@ -392,6 +379,7 @@ class TestStockEntry(unittest.TestCase):
 		self.assertEqual(jv.get("accounts")[0].get("account"), "Debtors - _TC")
 		self.assertEqual(jv.get("accounts")[0].get("party_type"), "Customer")
 		self.assertEqual(jv.get("accounts")[0].get("party"), "_Test Customer")
+		self.assertTrue(jv.get("accounts")[0].get("against_invoice"))
 		self.assertEqual(jv.get("accounts")[1].get("account"), "Sales - _TC")
 
 	def test_make_return_jv_for_sales_invoice_non_packing_item(self):
@@ -399,7 +387,7 @@ class TestStockEntry(unittest.TestCase):
 		self._test_sales_return_jv(se)
 
 	def test_make_return_jv_for_sales_invoice_packing_item(self):
-		se = self._test_sales_invoice_return("_Test Product Bundle Item", 25, 20)
+		se = self._test_sales_invoice_return("_Test Sales BOM Item", 25, 20)
 		self._test_sales_return_jv(se)
 
 	def test_make_return_jv_for_delivery_note_non_packing_item(self):
@@ -410,10 +398,10 @@ class TestStockEntry(unittest.TestCase):
 		self._test_sales_return_jv(se)
 
 	def test_make_return_jv_for_delivery_note_packing_item(self):
-		se = self._test_delivery_note_return("_Test Product Bundle Item", 25, 20)
+		se = self._test_delivery_note_return("_Test Sales BOM Item", 25, 20)
 		self._test_sales_return_jv(se)
 
-		se = self._test_delivery_note_return_against_sales_order("_Test Product Bundle Item", 25, 20)
+		se = self._test_delivery_note_return_against_sales_order("_Test Sales BOM Item", 25, 20)
 		self._test_sales_return_jv(se)
 
 	def _test_delivery_note_return_against_sales_order(self, item_code, delivered_qty, returned_qty):
@@ -496,6 +484,7 @@ class TestStockEntry(unittest.TestCase):
 		self.assertEqual(jv.get("accounts")[0].get("account"), "_Test Payable - _TC")
 		self.assertEqual(jv.get("accounts")[0].get("party"), "_Test Supplier")
 		self.assertEqual(jv.get("accounts")[1].get("account"), "_Test Account Cost for Goods Sold - _TC")
+		self.assertTrue(jv.get("accounts")[0].get("against_voucher"))
 
 	def test_make_return_jv_for_purchase_receipt(self):
 		se, pr_name = self.test_purchase_receipt_return()
@@ -704,7 +693,7 @@ class TestStockEntry(unittest.TestCase):
 	def test_warehouse_company_validation(self):
 		set_perpetual_inventory(0)
 		frappe.get_doc("User", "test2@example.com")\
-			.add_roles("Sales User", "Sales Manager", "Stock User", "Stock Manager")
+			.add_roles("Sales User", "Sales Manager", "Material User", "Material Manager")
 		frappe.set_user("test2@example.com")
 
 		from erpnext.stock.utils import InvalidWarehouseCompany
@@ -720,11 +709,11 @@ class TestStockEntry(unittest.TestCase):
 		frappe.defaults.add_default("Warehouse", "_Test Warehouse 1 - _TC", "test@example.com", "User Permission")
 		frappe.defaults.add_default("Warehouse", "_Test Warehouse 2 - _TC1", "test2@example.com", "User Permission")
 		test_user = frappe.get_doc("User", "test@example.com")
-		test_user.add_roles("Sales User", "Sales Manager", "Stock User")
-		test_user.remove_roles("Stock Manager")
+		test_user.add_roles("Sales User", "Sales Manager", "Material User")
+		test_user.remove_roles("Material Manager")
 
 		frappe.get_doc("User", "test2@example.com")\
-			.add_roles("Sales User", "Sales Manager", "Stock User", "Stock Manager")
+			.add_roles("Sales User", "Sales Manager", "Material User", "Material Manager")
 
 		frappe.set_user("test@example.com")
 		st1 = frappe.copy_doc(test_records[0])

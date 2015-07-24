@@ -50,11 +50,6 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "SMS Log",
-					"description":_("Logs for maintaining sms delivery status"),
-				},
-				{
-					"type": "doctype",
 					"name": "Newsletter",
 					"description": _("Newsletters to contacts, leads."),
 				},
@@ -149,7 +144,7 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Product Bundle",
+					"name": "Sales BOM",
 					"description": _("Bundle items at time of sale."),
 				},
 				{
@@ -241,12 +236,6 @@ def get_data():
 					"name": "Sales Person Target Variance (Item Group-Wise)",
 					"route": "query-report/Sales Person Target Variance Item Group-Wise",
 					"doctype": "Sales Person",
-				},
-				{
-					"type": "report",
-					"is_query_report": True,
-					"name": "BOM Search",
-					"doctype": "BOM"
 				},
 				{
 					"type": "report",

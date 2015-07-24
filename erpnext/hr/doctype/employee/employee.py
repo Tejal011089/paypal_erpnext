@@ -45,10 +45,6 @@ class Employee(Document):
 		if self.user_id:
 			self.validate_for_enabled_user_id()
 			self.validate_duplicate_user_id()
-		else:
-			existing_user_id = frappe.db.get_value("Employee", self.name, "user_id")
-			if existing_user_id:
-				frappe.permissions.remove_user_permission("Employee", self.name, existing_user_id)
 
 	def on_update(self):
 		if self.user_id:

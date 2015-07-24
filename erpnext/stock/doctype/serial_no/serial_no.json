@@ -418,7 +418,7 @@
  "icon": "icon-barcode", 
  "idx": 1, 
  "in_create": 0, 
- "modified": "2015-07-13 05:28:27.961178", 
+ "modified": "2015-05-28 21:35:58.378231", 
  "modified_by": "Administrator", 
  "module": "Stock", 
  "name": "Serial No", 
@@ -432,7 +432,7 @@
    "print": 1, 
    "read": 1, 
    "report": 1, 
-   "role": "Item Manager", 
+   "role": "Material Master Manager", 
    "share": 1, 
    "submit": 0, 
    "write": 1
@@ -446,7 +446,7 @@
    "print": 1, 
    "read": 1, 
    "report": 1, 
-   "role": "Stock Manager", 
+   "role": "Material Manager", 
    "submit": 0, 
    "write": 0
   }, 
@@ -460,7 +460,7 @@
    "print": 1, 
    "read": 1, 
    "report": 1, 
-   "role": "Stock User", 
+   "role": "Material User", 
    "submit": 0, 
    "write": 0
   }

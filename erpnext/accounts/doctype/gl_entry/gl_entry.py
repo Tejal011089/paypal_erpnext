@@ -4,7 +4,7 @@
 from __future__ import unicode_literals
 import frappe
 
-from frappe.utils import flt, fmt_money, getdate, formatdate, cstr
+from frappe.utils import flt, fmt_money, getdate, formatdate
 from frappe import _
 
 from frappe.model.document import Document
@@ -118,7 +118,7 @@ def update_outstanding_amt(account, party_type, party, against_voucher_type, aga
 	bal = flt(frappe.db.sql("""select sum(ifnull(debit, 0)) - sum(ifnull(credit, 0))
 		from `tabGL Entry`
 		where against_voucher_type=%s and against_voucher=%s
-		and account = %s and ifnull(party_type, '')=%s and ifnull(party, '')=%s""",
+		and account = %s and party_type=%s and party=%s""",
 		(against_voucher_type, against_voucher, account, party_type, party))[0][0] or 0.0)
 
 	if against_voucher_type == 'Purchase Invoice':
@@ -127,9 +127,8 @@ def update_outstanding_amt(account, party_type, party, against_voucher_type, aga
 		against_voucher_amount = flt(frappe.db.sql("""
 			select sum(ifnull(debit, 0)) - sum(ifnull(credit, 0))
 			from `tabGL Entry` where voucher_type = 'Journal Entry' and voucher_no = %s
-			and account = %s and ifnull(party_type, '')=%s and ifnull(party, '')=%s
-			and ifnull(against_voucher, '') = ''""",
-			(against_voucher, account, cstr(party_type), cstr(party)))[0][0])
+			and account = %s and party_type=%s and party=%s and ifnull(against_voucher, '') = ''""",
+			(against_voucher, account, party_type, party))[0][0])
 
 		if not against_voucher_amount:
 			frappe.throw(_("Against Journal Entry {0} is already adjusted against some other voucher")
@@ -158,22 +157,3 @@ def validate_frozen_account(account, adv_adj=None):
 			frappe.throw(_("Account {0} is frozen").format(account))
 		elif frozen_accounts_modifier not in frappe.get_roles():
 			frappe.throw(_("Not authorized to edit frozen Account {0}").format(account))
-
-def update_against_account(voucher_type, voucher_no):
-	entries = frappe.db.get_all("GL Entry",
-		filters={"voucher_type": voucher_type, "voucher_no": voucher_no},
-		fields=["name", "party", "against", "debit", "credit", "account"])
-
-	accounts_debited, accounts_credited = [], []
-	for d in entries:
-		if flt(d.debit > 0): accounts_debited.append(d.party or d.account)
-		if flt(d.credit) > 0: accounts_credited.append(d.party or d.account)
-
-	for d in entries:
-		if flt(d.debit > 0):
-			new_against = ", ".join(list(set(accounts_credited)))
-		if flt(d.credit > 0):
-			new_against = ", ".join(list(set(accounts_debited)))
-
-		if d.against != new_against:
-			frappe.db.set_value("GL Entry", d.name, "against", new_against)

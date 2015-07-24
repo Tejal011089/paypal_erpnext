@@ -30,7 +30,6 @@ class ProductionOrder(Document):
 		validate_status(self.status, ["Draft", "Submitted", "Stopped",
 			"In Process", "Completed", "Cancelled"])
 
-		self.validate_production_item()
 		if self.bom_no:
 			validate_bom_no(self.production_item, self.bom_no)
 
@@ -91,9 +90,8 @@ class ProductionOrder(Document):
 			(self.sales_order, self.production_item))[0][0]
 		# total qty in SO
 		so_qty = flt(so_item_qty) + flt(dnpi_qty)
-		
-		allowance_percentage = flt(frappe.db.get_single_value("Manufacturing Settings", "over_production_allowance_percentage"))
-		if total_qty > so_qty + (allowance_percentage/100 * so_qty):
+
+		if total_qty > so_qty:
 			frappe.throw(_("Cannot produce more Item {0} than Sales Order quantity {1}").format(self.production_item,
 				so_qty), OverProductionError)
 
@@ -174,17 +172,13 @@ class ProductionOrder(Document):
 
 	def set_production_order_operations(self):
 		"""Fetch operations from BOM and set in 'Production Order'"""
-		if not self.bom_no:
-			return
+
 		self.set('operations', [])
+
 		operations = frappe.db.sql("""select operation, description, workstation, idx,
 			hour_rate, time_in_mins, "Pending" as status from `tabBOM Operation`
 			where parent = %s order by idx""", self.bom_no, as_dict=1)
-		if operations:
-			self.track_operations=1
-		else:
-			self.track_operations=0
-			frappe.msgprint(_("Cannot 'track operations' as selected BOM does not have Operations."))
+
 		self.set('operations', operations)
 		self.calculate_time()
 
@@ -315,35 +309,26 @@ class ProductionOrder(Document):
 			self.actual_end_date = None
 
 	def validate_delivery_date(self):
-		if self.planned_start_date and self.expected_delivery_date \
-			and getdate(self.expected_delivery_date) < getdate(self.planned_start_date):
-				frappe.msgprint(_("Expected Delivery Date is lesser than Planned Start Date."))
+		if self.docstatus==1:
+			if self.planned_end_date and self.expected_delivery_date \
+				and getdate(self.expected_delivery_date) < getdate(self.planned_end_date):
+					frappe.msgprint(_("Production might not be able to finish by the Expected Delivery Date."))
 
 	def delete_time_logs(self):
 		for time_log in frappe.get_all("Time Log", ["name"], {"production_order": self.name}):
 			frappe.delete_doc("Time Log", time_log.name)
-	
-	def validate_production_item(self):
-		if frappe.db.get_value("Item", self.production_item, "is_pro_applicable")=='No':
-			frappe.throw(_("Item is not allowed to have Production Order."))
-		
-		if frappe.db.get_value("Item", self.production_item, "has_variants"):
-			frappe.throw(_("Production Order cannot be raised against a Item Template"))
 
 @frappe.whitelist()
 def get_item_details(item):
 	res = frappe.db.sql("""select stock_uom, description
 		from `tabItem` where (ifnull(end_of_life, "0000-00-00")="0000-00-00" or end_of_life > now())
 		and name=%s""", item, as_dict=1)
+
 	if not res:
 		return {}
 
 	res = res[0]
 	res["bom_no"] = frappe.db.get_value("BOM", filters={"item": item, "is_default": 1})
-	if not res["bom_no"]:
-		variant_of= frappe.db.get_value("Item", item, "variant_of")
-		if variant_of:
-			res["bom_no"] = frappe.db.get_value("BOM", filters={"item": variant_of, "is_default": 1})
 	return res
 
 @frappe.whitelist()
@@ -396,7 +381,7 @@ def get_events(start, end, filters=None):
 	return data
 
 @frappe.whitelist()
-def make_time_log(name, operation, from_time=None, to_time=None, qty=None,  project=None, workstation=None, operation_id=None):
+def make_time_log(name, operation, from_time, to_time, qty=None,  project=None, workstation=None, operation_id=None):
 	time_log =  frappe.new_doc("Time Log")
 	time_log.for_manufacturing = 1
 	time_log.from_time = from_time

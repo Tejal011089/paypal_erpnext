@@ -14,6 +14,7 @@ erpnext.TransactionController = erpnext.taxes_and_totals.extend({
 
 			$.each({
 				posting_date: today,
+				due_date: today,
 				transaction_date: today,
 				currency: currency,
 				price_list_currency: currency,
@@ -35,16 +36,6 @@ erpnext.TransactionController = erpnext.taxes_and_totals.extend({
 
 		if(this.frm.fields_dict["items"]) {
 			this["items_remove"] = this.calculate_taxes_and_totals;
-		}
-		
-		if(this.frm.fields_dict["recurring_print_format"]) {
-			this.frm.set_query("recurring_print_format", function(doc) {
-				return{
-					filters: [
-						['Print Format', 'doc_type', '=', cur_frm.doctype],
-					]
-				}
-			});
 		}
 	},
 
@@ -112,15 +103,6 @@ erpnext.TransactionController = erpnext.taxes_and_totals.extend({
 		} else {
 			unhide_field("currency_and_price_list");
 		}
-	},
-
-	barcode: function(doc, cdt, cdn) {
-		var d = locals[cdt][cdn];
-		if(d.barcode=="" || d.barcode==null) {
-			// barcode cleared, remove item
-			d.item_code = "";
-		}
-		this.item_code(doc, cdt, cdn);
 	},
 
 	item_code: function(doc, cdt, cdn) {
@@ -254,37 +236,11 @@ erpnext.TransactionController = erpnext.taxes_and_totals.extend({
 	},
 
 	posting_date: function() {
-		var me = this;
-		if (this.frm.doc.posting_date) {
-			if ((this.frm.doc.doctype == "Sales Invoice" && this.frm.doc.customer) || 
-				(this.frm.doc.doctype == "Purchase Invoice" && this.frm.doc.supplier)) {
-				return frappe.call({
-					method: "erpnext.accounts.party.get_due_date",
-					args: {
-						"posting_date": me.frm.doc.posting_date,
-						"party_type": me.frm.doc.doctype == "Sales Invoice" ? "Customer" : "Supplier",
-						"party": me.frm.doc.doctype == "Sales Invoice" ? me.frm.doc.customer : me.frm.doc.supplier,
-						"company": me.frm.doc.company
-					}, 
-					callback: function(r, rt) {
-						if(r.message) {
-							me.frm.set_value("due_date", r.message);
-						}
-						erpnext.get_fiscal_year(me.frm.doc.company, me.frm.doc.posting_date);
-					}
-				})
-			} else {
-				erpnext.get_fiscal_year(me.frm.doc.company, me.frm.doc.posting_date);
-			}
-		}
+		erpnext.get_fiscal_year(this.frm.doc.company, this.frm.doc.posting_date);
 	},
 
 	get_company_currency: function() {
 		return erpnext.get_currency(this.frm.doc.company);
-	},
-	
-	contact_person: function() {
-		erpnext.utils.get_contact_details(this.frm);
 	},
 
 	currency: function() {
@@ -817,5 +773,3 @@ frappe.ui.form.on(cur_frm.doctype, "discount_amount", function(frm) {
 	cur_frm.cscript.set_dynamic_labels();
 	cur_frm.cscript.calculate_taxes_and_totals();
 })
-
-

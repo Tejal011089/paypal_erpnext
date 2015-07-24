@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 import frappe
 import frappe.defaults
 
-from frappe.utils import cstr, cint, flt, comma_or, get_datetime, getdate
+from frappe.utils import cstr, cint, flt, comma_or, get_datetime
 
 from frappe import _
 from erpnext.stock.utils import get_incoming_rate
@@ -66,7 +66,6 @@ class StockEntry(StockController):
 		self.validate_valuation_rate()
 		self.set_total_incoming_outgoing_value()
 		self.set_total_amount()
-		self.validate_batch()
 
 	def on_submit(self):
 		self.update_stock_ledger()
@@ -113,7 +112,7 @@ class StockEntry(StockController):
 
 			for f in ("uom", "stock_uom", "description", "item_name", "expense_account",
 				"cost_center", "conversion_factor"):
-					if f in ["stock_uom", "conversion_factor"] or not item.get(f):
+					if f not in ["expense_account", "cost_center"] or not item.get(f):
 						item.set(f, item_details.get(f))
 
 			if self.difference_account:
@@ -186,6 +185,9 @@ class StockEntry(StockController):
 
 	def validate_production_order(self):
 		if self.purpose in ("Manufacture", "Material Transfer for Manufacture"):
+			if not self.bom_no:
+				frappe.throw(_("BOM No is mandatory"))
+				
 			# check if production order is entered
 			if not self.production_order:
 				frappe.throw(_("Production order number is mandatory for stock entry purpose manufacture"))
@@ -201,9 +203,6 @@ class StockEntry(StockController):
 	def check_if_operations_completed(self):
 		"""Check if Time Logs are completed against before manufacturing to capture operating costs."""
 		prod_order = frappe.get_doc("Production Order", self.production_order)
-		if not prod_order.track_operations:
-			return
-			
 		for d in prod_order.get("operations"):
 			total_completed_qty = flt(self.fg_completed_qty) + flt(prod_order.produced_qty)
 			if total_completed_qty > flt(d.completed_qty):
@@ -363,11 +362,8 @@ class StockEntry(StockController):
 		if self.purpose == "Subcontract" and self.purchase_order:
 			purchase_order = frappe.get_doc("Purchase Order", self.purchase_order)
 			for se_item in self.items:
-				total_allowed = sum([flt(d.required_qty) for d in purchase_order.supplied_items \
-					if d.rm_item_code == se_item.item_code])
-				if not total_allowed:
-					frappe.throw(_("Item {0} not found in 'Raw Materials Supplied' table in Purchase Order {1}")
-						.format(se_item.item_code, self.purchase_order))
+				total_allowed = [d.required_qty for d in purchase_order.supplied_items \
+					if d.rm_item_code == se_item.item_code][0]
 				total_supplied = frappe.db.sql("""select sum(qty)
 					from `tabStock Entry Detail`, `tabStock Entry`
 					where `tabStock Entry`.purchase_order = %s
@@ -728,15 +724,6 @@ class StockEntry(StockController):
 				mreq_item.warehouse != (item.s_warehouse if self.purpose== "Material Issue" else item.t_warehouse):
 					frappe.throw(_("Item or Warehouse for row {0} does not match Material Request").format(item.idx),
 						frappe.MappingMismatchError)
-						
-	def validate_batch(self):
-		if self.purpose in ["Material Transfer for Manufacture", "Manufacture", "Repack", "Subcontract"]:
-			for item in self.get("items"):
-				if item.batch_no:
-					expiry_date = frappe.db.get_value("Batch", item.batch_no, "expiry_date")
-					if expiry_date:
-						if getdate(self.posting_date) > getdate(expiry_date):
-							frappe.throw(_("Batch {0} of Item {1} has expired.").format(item.batch_no, item.item_code))
 
 @frappe.whitelist()
 def get_party_details(ref_dt, ref_dn):
@@ -875,6 +862,8 @@ def make_return_jv(stock_entry):
 			"account": r.get("account"),
 			"party_type": r.get("party_type"),
 			"party": r.get("party"),
+			"against_invoice": r.get("against_invoice"),
+			"against_voucher": r.get("against_voucher"),
 			"balance": get_balance_on(r.get("account"), se.posting_date) if r.get("account") else 0
 		})
 
@@ -885,7 +874,8 @@ def make_return_jv_from_sales_invoice(se, ref):
 	parent = {
 		"account": ref.doc.debit_to,
 		"party_type": "Customer",
-		"party": ref.doc.customer
+		"party": ref.doc.customer,
+		"against_invoice": ref.doc.name,
 	}
 
 	# income account entries
@@ -959,6 +949,9 @@ def make_return_jv_from_delivery_note(se, ref):
 
 			break
 
+	if len(invoices_against_delivery) == 1:
+		parent["against_invoice"] = invoices_against_delivery[0]
+
 	result = [parent] + [{"account": account} for account in children]
 
 	return result
@@ -1013,6 +1006,9 @@ def make_return_jv_from_purchase_receipt(se, ref):
 				}
 
 			break
+
+	if len(invoice_against_receipt) == 1:
+		parent["against_voucher"] = invoice_against_receipt[0]
 
 	result = [parent] + [{"account": account} for account in children]
 

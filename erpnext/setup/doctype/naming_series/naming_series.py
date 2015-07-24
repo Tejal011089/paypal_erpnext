@@ -26,8 +26,7 @@ class NamingSeries(Document):
 			except frappe.DoesNotExistError:
 				continue
 
-			if options:
-				prefixes = prefixes + "\n" + options
+			prefixes = prefixes + "\n" + options
 
 		prefixes.replace("\n\n", "\n")
 		prefixes = "\n".join(sorted(prefixes.split()))
@@ -50,7 +49,7 @@ class NamingSeries(Document):
 		self.set_series_for(self.select_doc_for_series, series_list)
 
 		# create series
-		map(self.insert_series, [d.split('.')[0] for d in series_list if d.strip()])
+		map(self.insert_series, [d.split('.')[0] for d in series_list])
 
 		msgprint(_("Series Updated"))
 

@@ -290,7 +290,6 @@
    "label": "Company Email", 
    "oldfieldname": "company_email", 
    "oldfieldtype": "Data", 
-   "options": "Email", 
    "permlevel": 0, 
    "reqd": 0
   }, 
@@ -386,7 +385,6 @@
    "fieldname": "personal_email", 
    "fieldtype": "Data", 
    "label": "Personal Email", 
-   "options": "Email", 
    "permlevel": 0
   }, 
   {
@@ -676,7 +674,7 @@
  ], 
  "icon": "icon-user", 
  "idx": 1, 
- "modified": "2015-07-09 02:25:20.987412", 
+ "modified": "2015-02-20 05:02:14.205144", 
  "modified_by": "Administrator", 
  "module": "HR", 
  "name": "Employee", 

@@ -5,6 +5,39 @@ frappe.provide("erpnext.item");
 
 frappe.ui.form.on("Item", {
 	onload: function(frm) {
+		var df = frappe.meta.get_docfield("Item Variant", "item_attribute_value");
+		df.on_make = function(field) {
+			field.$input.autocomplete({
+				minLength: 0,
+				minChars: 0,
+				source: function(request, response) {
+					frappe.call({
+						method:"frappe.client.get_list",
+						args:{
+							doctype:"Item Attribute Value",
+							filters: [
+								["parent","=", field.doc.item_attribute],
+								["attribute_value", "like", request.term + "%"]
+							],
+							fields: ["attribute_value"]
+						},
+						callback: function(r) {
+							response($.map(r.message, function(d) { return d.attribute_value; }));
+						}
+					});
+				},
+				select: function(event, ui) {
+					field.$input.val(ui.item.value);
+					field.$input.trigger("change");
+				},
+				focus: function( event, ui ) {
+					if(ui.item.action) {
+						return false;
+					}
+				},
+			});
+		}
+
 		erpnext.item.setup_queries(frm);
 	},
 
@@ -21,9 +54,6 @@ frappe.ui.form.on("Item", {
 		// make sensitive fields(has_serial_no, is_stock_item, valuation_method)
 		// read only if any stock ledger entry exists
 		erpnext.item.make_dashboard(frm);
-
-		// clear intro
-		frm.set_intro();
 
 		if (frm.doc.has_variants) {
 			frm.set_intro(__("This Item is a Template and cannot be used in transactions. Item attributes will be copied over into the variants unless 'No Copy' is set"), true);
@@ -55,7 +85,7 @@ frappe.ui.form.on("Item", {
 		erpnext.item.weight_to_validate(frm);
 		erpnext.item.variants_can_not_be_created_manually(frm);
 	},
-
+	
 	image: function(frm) {
 		refresh_field("image_view");
 	},
@@ -80,18 +110,8 @@ frappe.ui.form.on("Item", {
 			method: "copy_specification_from_item_group"
 		});
 	},
-	
 	is_stock_item: function(frm) {
 		erpnext.item.toggle_reqd(frm);
-	},
-	
-	manage_variants: function(frm) {
-		if (cur_frm.doc.__unsaved==1) {
-			frappe.throw(__("You have unsaved changes. Please save."))
-		} else {
-			frappe.route_options = {"item_code": frm.doc.name };
-			frappe.set_route("List", "Manage Variants");
-		}
 	}
 });
 
@@ -189,11 +209,11 @@ $.extend(erpnext.item, {
 			validated = 0;
 		}
 	},
-
+	
 	variants_can_not_be_created_manually: function(frm) {
 		if (frm.doc.__islocal && frm.doc.variant_of)
 			frappe.throw(__("Variants can not be created manually, add item attributes in the template item"))
 	}
-
+	
 
 });

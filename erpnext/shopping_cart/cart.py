@@ -7,7 +7,6 @@ from frappe import throw, _
 import frappe.defaults
 from frappe.utils import cint, flt, get_fullname, fmt_money, cstr
 from erpnext.utilities.doctype.address.address import get_address_display
-from erpnext.shopping_cart.doctype.shopping_cart_settings.shopping_cart_settings import get_shopping_cart_settings
 from frappe.utils.nestedset import get_root_of
 
 class WebsitePriceListMissingError(frappe.ValidationError): pass
@@ -163,7 +162,7 @@ def _get_cart_quotation(party=None):
 	else:
 		qdoc = frappe.get_doc({
 			"doctype": "Quotation",
-			"naming_series": get_shopping_cart_settings().quotation_series or "QTN-CART-",
+			"naming_series": frappe.defaults.get_user_default("shopping_cart_quotation_series") or "QTN-CART-",
 			"quotation_to": party.doctype,
 			"company": frappe.db.get_value("Shopping Cart Settings", None, "company"),
 			"order_type": "Shopping Cart",
@@ -237,9 +236,7 @@ def apply_cart_settings(party=None, quotation=None):
 
 def set_price_list_and_rate(quotation, cart_settings, billing_territory):
 	"""set price list based on billing territory"""
-
-	_set_price_list(quotation, cart_settings, billing_territory)
-
+	quotation.selling_price_list = cart_settings.get_price_list(billing_territory)
 	# reset values
 	quotation.price_list_currency = quotation.currency = \
 		quotation.plc_conversion_rate = quotation.conversion_rate = None
@@ -251,18 +248,6 @@ def set_price_list_and_rate(quotation, cart_settings, billing_territory):
 
 	# set it in cookies for using in product page
 	frappe.local.cookie_manager.set_cookie("selling_price_list", quotation.selling_price_list)
-
-def _set_price_list(quotation, cart_settings, billing_territory):
-	# check if customer price list exists
-	selling_price_list = None
-	if quotation.customer:
-		selling_price_list = frappe.db.get_value("Customer", quotation.customer, "default_price_list")
-
-	# else check for territory based price list
-	if not selling_price_list:
-		selling_price_list = cart_settings.get_price_list(billing_territory)
-
-	quotation.selling_price_list = selling_price_list
 
 def set_taxes(quotation, cart_settings, billing_territory):
 	"""set taxes based on billing territory"""

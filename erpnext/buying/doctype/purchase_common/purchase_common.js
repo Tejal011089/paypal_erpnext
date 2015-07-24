@@ -70,6 +70,10 @@ erpnext.buying.BuyingController = erpnext.TransactionController.extend({
 		erpnext.utils.get_address_display(this.frm);
 	},
 
+	contact_person: function() {
+		erpnext.utils.get_contact_details(this.frm);
+	},
+
 	buying_price_list: function() {
 		this.apply_price_list();
 	},

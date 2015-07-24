@@ -15,27 +15,19 @@ class Project(Document):
 
 	def onload(self):
 		"""Load project tasks for quick view"""
-		if not self.get("tasks"):
-			for task in self.get_tasks():
-				self.append("tasks", {
-					"title": task.subject,
-					"status": task.status,
-					"start_date": task.exp_start_date,
-					"end_date": task.exp_end_date,
-					"description": task.description,
-					"task_id": task.name
-				})
-			
-	def __setup__(self):
-		self.onload()
-	
-	def get_tasks(self):
-		return frappe.get_all("Task", "*", {"project": self.name}, order_by="exp_start_date asc")
-		
+		for task in frappe.get_all("Task", "*", {"project": self.name}, order_by="exp_start_date asc"):
+			self.append("tasks", {
+				"title": task.subject,
+				"status": task.status,
+				"start_date": task.exp_start_date,
+				"end_date": task.exp_end_date,
+				"description": task.description,
+				"task_id": task.name
+			})
+
 	def validate(self):
 		self.validate_dates()
 		self.sync_tasks()
-		self.tasks = []
 
 	def validate_dates(self):
 		if self.expected_start_date and self.expected_end_date:
@@ -46,8 +38,6 @@ class Project(Document):
 		"""sync tasks and remove table"""
 		if self.flags.dont_sync_tasks: return
 
-
-		task_added_or_deleted = False
 		task_names = []
 		for t in self.tasks:
 			if t.task_id:
@@ -55,7 +45,6 @@ class Project(Document):
 			else:
 				task = frappe.new_doc("Task")
 				task.project = self.name
-				task_added_or_deleted = True
 
 			task.update({
 				"subject": t.title,
@@ -73,22 +62,17 @@ class Project(Document):
 		# delete
 		for t in frappe.get_all("Task", ["name"], {"project": self.name, "name": ("not in", task_names)}):
 			frappe.delete_doc("Task", t.name)
-			task_added_or_deleted = True
-			
-		if task_added_or_deleted:
-			self.update_project()
 
-	def update_project(self):
-		self.update_percent_complete()
-		self.update_costing()
+		self.tasks = []
 
 	def update_percent_complete(self):
-		total = frappe.db.sql("""select count(*) from tabTask where project=%s""", self.name)[0][0]
+		total = frappe.db.sql("""select count(*) from tabTask where project=%s""",
+			self.name)[0][0]
 		if total:
 			completed = frappe.db.sql("""select count(*) from tabTask where
 				project=%s and status in ('Closed', 'Cancelled')""", self.name)[0][0]
-				
-			self.percent_complete = flt(completed) / total * 100
+			frappe.db.set_value("Project", self.name, "percent_complete",
+			 	int(float(completed) / total * 100))
 
 	def update_costing(self):
 		total_cost = frappe.db.sql("""select sum(total_costing_amount) as costing_amount,

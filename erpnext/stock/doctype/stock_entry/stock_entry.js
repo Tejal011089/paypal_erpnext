@@ -411,21 +411,14 @@ cur_frm.fields_dict['items'].grid.get_field('batch_no').get_query = function(doc
 	var item = locals[cdt][cdn];
 	if(!item.item_code) {
 		frappe.throw(__("Please enter Item Code to get batch no"));
-	}
-	else {
-		if (in_list(["Material Transfer for Manufacture", "Manufacture", "Repack", "Subcontract"], doc.purpose)) {
-			var filters = {
-				'item_code': item.item_code,
-				'posting_date': me.frm.doc.posting_date || nowdate()
-			}	
-		} else {
-			var filters = {
-				'item_code': item.item_code
-			}
+	} else {
+		var filters = {
+			'item_code': item.item_code,
+			'posting_date': me.frm.doc.posting_date,
 		}
-		
 
 		if(item.s_warehouse) filters["warehouse"] = item.s_warehouse
+
 		return {
 			query : "erpnext.controllers.queries.get_batch_no",
 			filters: filters
@@ -505,9 +498,9 @@ cur_frm.cscript.uom = function(doc, cdt, cdn) {
 }
 
 cur_frm.cscript.validate = function(doc, cdt, cdn) {
+	cur_frm.cscript.validate_items(doc);
 	if($.inArray(cur_frm.doc.purpose, ["Purchase Return", "Sales Return"])!==-1)
 		validated = cur_frm.cscript.get_doctype_docname() ? true : false;
-	cur_frm.cscript.validate_items(doc);
 }
 
 cur_frm.cscript.validate_items = function(doc) {
@@ -519,11 +512,11 @@ cur_frm.cscript.validate_items = function(doc) {
 }
 
 cur_frm.cscript.expense_account = function(doc, cdt, cdn) {
-	erpnext.utils.copy_value_in_all_row(doc, cdt, cdn, "items", "expense_account");
+	cur_frm.cscript.copy_account_in_all_row(doc, cdt, cdn, "expense_account");
 }
 
 cur_frm.cscript.cost_center = function(doc, cdt, cdn) {
-	erpnext.utils.copy_value_in_all_row(doc, cdt, cdn, "items", "cost_center");
+	cur_frm.cscript.copy_account_in_all_row(doc, cdt, cdn, "cost_center");
 }
 
 cur_frm.fields_dict.customer.get_query = function(doc, cdt, cdn) {

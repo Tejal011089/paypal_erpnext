@@ -52,7 +52,7 @@
    "fieldname": "customer_name", 
    "fieldtype": "Data", 
    "hidden": 0, 
-   "label": "Customer Name", 
+   "label": "Name", 
    "permlevel": 0, 
    "read_only": 1
   }, 
@@ -493,7 +493,7 @@
   {
    "fieldname": "base_discount_amount", 
    "fieldtype": "Currency", 
-   "label": "Additional Discount Amount (Company Currency)", 
+   "label": "Discount Amount (Company Currency)", 
    "options": "Company:company:default_currency", 
    "permlevel": 0, 
    "precision": "", 
@@ -1074,22 +1074,13 @@
    "no_copy": 1, 
    "permlevel": 0, 
    "print_hide": 1
-  }, 
-  {
-   "depends_on": "eval:doc.is_recurring==1", 
-   "fieldname": "recurring_print_format", 
-   "fieldtype": "Link", 
-   "label": "Recurring Print Format", 
-   "options": "Print Format", 
-   "permlevel": 0, 
-   "precision": ""
   }
  ], 
  "icon": "icon-file-text", 
  "idx": 1, 
  "is_submittable": 1, 
  "issingle": 0, 
- "modified": "2015-07-13 05:28:26.889049", 
+ "modified": "2015-05-27 02:48:01.160307", 
  "modified_by": "Administrator", 
  "module": "Selling", 
  "name": "Sales Order", 
@@ -1170,7 +1161,7 @@
    "permlevel": 0, 
    "read": 1, 
    "report": 1, 
-   "role": "Stock User"
+   "role": "Material User"
   }, 
   {
    "permlevel": 1, 

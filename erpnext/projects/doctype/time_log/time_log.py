@@ -73,20 +73,18 @@ class TimeLog(Document):
 	def validate_overlap_for(self, fieldname):
 		existing = self.get_overlap_for(fieldname)
 		if existing:
-			frappe.throw(_("This Time Log conflicts with {0} for {1} {2}").format(existing.name,
-				self.meta.get_label(fieldname), self.get(fieldname)), OverlapError)
+			frappe.throw(_("This Time Log conflicts with {0} for {1}").format(existing.name,
+				self.meta.get_label(fieldname)), OverlapError)
 
 	def get_overlap_for(self, fieldname):
 		if not self.get(fieldname):
 			return
 
-		existing = frappe.db.sql("""select name, from_time, to_time from `tabTime Log`
-			where `{0}`=%(val)s and
+		existing = frappe.db.sql("""select name, from_time, to_time from `tabTime Log` where `{0}`=%(val)s and
 			(
-				(from_time > %(from_time)s and from_time < %(to_time)s) or
-				(to_time > %(from_time)s and to_time < %(to_time)s) or
-				(%(from_time)s > from_time and %(from_time)s < to_time) or
-				(%(from_time)s = from_time and %(to_time)s = to_time))
+				(from_time between %(from_time)s and %(to_time)s) or
+				(to_time between %(from_time)s and %(to_time)s) or
+				(%(from_time)s between from_time and to_time))
 			and name!=%(name)s
 			and ifnull(task, "")=%(task)s
 			and docstatus < 2""".format(fieldname),
@@ -130,7 +128,7 @@ class TimeLog(Document):
 
 	def update_production_order(self):
 		"""Updates `start_date`, `end_date`, `status` for operation in Production Order."""
-
+		
 		if self.production_order and self.for_manufacturing:
 			if not self.operation_id:
 				frappe.throw(_("Operation ID not set"))
@@ -210,23 +208,22 @@ class TimeLog(Document):
 			self.production_order = None
 			self.operation = None
 			self.quantity = None
-
+	
 	def update_cost(self):
 		rate = get_activity_cost(self.employee, self.activity_type)
 		if rate:
 			self.costing_rate = rate.get('costing_rate')
-			self.billing_rate = rate.get('billing_rate')
+			self.billing_rate = rate.get('billing_rate') 
 			self.costing_amount = self.costing_rate * self.hours
 			if self.billable:
 				self.billing_amount = self.billing_rate * self.hours
 			else:
 				self.billing_amount = 0
-
+				
 	def validate_task(self):
-		# if a time log is being created against a project without production order
-		if (self.project and not self.production_order) and not self.task:
+		if self.project and not self.task:
 			frappe.throw(_("Task is Mandatory if Time Log is against a project"))
-
+	
 	def update_task(self):
 		if self.task and frappe.db.exists("Task", self.task):
 			task = frappe.get_doc("Task", self.task)
@@ -269,12 +266,9 @@ def get_events(start, end, filters=None):
 			d.title += " for Project: " + d.project
 
 	return data
-
+	
 @frappe.whitelist()
 def get_activity_cost(employee=None, activity_type=None):
 	rate = frappe.db.sql("""select costing_rate, billing_rate from `tabActivity Cost` where employee= %s
 		and activity_type= %s""", (employee, activity_type), as_dict=1)
-	if not rate:
-		rate = frappe.db.sql("""select costing_rate, billing_rate from `tabActivity Cost` where ifnull(employee, '')=''
-			and activity_type= %s""", (activity_type), as_dict=1)
 	return rate[0] if rate else {}

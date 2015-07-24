@@ -4,13 +4,17 @@
 from __future__ import unicode_literals
 import frappe
 import frappe.defaults
-from frappe.utils import cint, cstr, flt
 from frappe import _, msgprint, throw
 from erpnext.accounts.party import get_party_account, get_due_date
 from erpnext.controllers.stock_controller import update_gl_entries_after
 from frappe.model.mapper import get_mapped_doc
-
+from erpnext.accounts.utils import get_balance_on
 from erpnext.controllers.selling_controller import SellingController
+from frappe.utils import add_days, cint, cstr, date_diff, rounded, flt, getdate, nowdate, \
+	get_first_day, get_last_day,money_in_words, now, nowtime
+
+import frappe.utils
+import itertools
 
 form_grid_templates = {
 	"items": "templates/form_grid/item_grid.html"
@@ -65,7 +69,8 @@ class SalesInvoice(SellingController):
 		self.set_against_income_account()
 		self.validate_c_form()
 		self.validate_time_logs_are_submitted()
-		self.validate_multiple_billing("Delivery Note", "dn_detail", "amount", "items")
+		self.validate_multiple_billing("Delivery Note", "dn_detail", "amount",
+			"items")
 
 	def on_submit(self):
 		super(SalesInvoice, self).on_submit()
@@ -138,7 +143,7 @@ class SalesInvoice(SellingController):
 
 		if not self.debit_to:
 			self.debit_to = get_party_account(self.company, self.customer, "Customer")
-		if not self.due_date and self.customer:
+		if not self.due_date:
 			self.due_date = get_due_date(self.posting_date, "Customer", self.customer, self.company)
 
 		super(SalesInvoice, self).set_missing_values(for_validate)
@@ -169,7 +174,6 @@ class SalesInvoice(SellingController):
 		if pos:
 			if not for_validate and not self.customer:
 				self.customer = pos.customer
-				self.mode_of_payment = pos.mode_of_payment
 				# self.set_customer_defaults()
 
 			for fieldname in ('territory', 'naming_series', 'currency', 'taxes_and_charges', 'letter_head', 'tc_name',
@@ -236,7 +240,9 @@ class SalesInvoice(SellingController):
 			reconcile_against_document(lst)
 
 	def validate_debit_to_acc(self):
-		account_type = frappe.db.get_value("Account", self.debit_to, "account_type")
+		root_type, account_type = frappe.db.get_value("Account", self.debit_to, ["root_type", "account_type"])
+		if root_type != "Asset":
+			frappe.throw(_("Debit To account must be a liability account"))
 		if account_type != "Receivable":
 			frappe.throw(_("Debit To account must be a Receivable account"))
 
@@ -264,11 +270,20 @@ class SalesInvoice(SellingController):
 			},
 		})
 
-		if cint(frappe.db.get_single_value('Selling Settings', 'maintain_same_sales_rate')):
-			self.validate_rate_with_reference_doc([
-				["Sales Order", "sales_order", "so_detail"], 
-				["Delivery Note", "delivery_note", "dn_detail"]
-			])
+		if cint(frappe.defaults.get_global_default('maintain_same_sales_rate')):
+			super(SalesInvoice, self).validate_with_previous_doc({
+				"Sales Order Item": {
+					"ref_dn_field": "so_detail",
+					"compare_fields": [["rate", "="]],
+					"is_child_table": True,
+					"allow_duplicate_prev_row_id": True
+				},
+				"Delivery Note Item": {
+					"ref_dn_field": "dn_detail",
+					"compare_fields": [["rate", "="]],
+					"is_child_table": True
+				}
+			})
 
 	def set_against_income_account(self):
 		"""Set against account for debit to account"""
@@ -495,7 +510,7 @@ class SalesInvoice(SellingController):
 				gl_entries.append(
 					self.get_gl_dict({
 						"account": tax.account_head,
-						"against": self.customer,
+						"against": self.debit_to,
 						"credit": flt(tax.base_tax_amount_after_discount_amount),
 						"remarks": self.remarks,
 						"cost_center": tax.cost_center
@@ -509,7 +524,7 @@ class SalesInvoice(SellingController):
 				gl_entries.append(
 					self.get_gl_dict({
 						"account": item.income_account,
-						"against": self.customer,
+						"against": self.debit_to,
 						"credit": item.base_net_amount,
 						"remarks": self.remarks,
 						"cost_center": item.cost_center
@@ -540,7 +555,7 @@ class SalesInvoice(SellingController):
 			gl_entries.append(
 				self.get_gl_dict({
 					"account": self.cash_bank_account,
-					"against": self.customer,
+					"against": self.debit_to,
 					"debit": self.paid_amount,
 					"remarks": self.remarks,
 				})
@@ -564,7 +579,7 @@ class SalesInvoice(SellingController):
 			gl_entries.append(
 				self.get_gl_dict({
 					"account": self.write_off_account,
-					"against": self.customer,
+					"against": self.debit_to,
 					"debit": self.write_off_amount,
 					"remarks": self.remarks,
 					"cost_center": self.write_off_cost_center
@@ -579,7 +594,7 @@ def get_list_context(context=None):
 
 @frappe.whitelist()
 def get_bank_cash_account(mode_of_payment, company):
-	account = frappe.db.get_value("Mode of Payment Account",
+	account = frappe.db.get_value("Mode of Payment Account", 
 		{"parent": mode_of_payment, "company": company}, "default_account")
 	if not account:
 		frappe.msgprint(_("Please set default Cash or Bank account in Mode of Payment {0}").format(mode_of_payment))
@@ -603,7 +618,7 @@ def get_income_account(doctype, txt, searchfield, start, page_len, filters):
 				and tabAccount.company = '%(company)s'
 				and tabAccount.%(key)s LIKE '%(txt)s'
 				%(mcond)s""" % {'company': filters['company'], 'key': searchfield,
-			'txt': "%%%s%%" % frappe.db.escape(txt), 'mcond':get_match_cond(doctype)})
+			'txt': "%%%s%%" % txt, 'mcond':get_match_cond(doctype)})
 
 @frappe.whitelist()
 def make_delivery_note(source_name, target_doc=None):
@@ -651,3 +666,190 @@ def make_delivery_note(source_name, target_doc=None):
 	}, target_doc, set_missing_values)
 
 	return doclist
+
+
+@frappe.whitelist()
+def make_paypal_payment(source_name, target_doc=None):
+	#frappe.errprint("sales invoice")
+	def set_missing_values(source, target):
+		target.sales_invoice_name = source_name
+
+	doclist = get_mapped_doc("Sales Invoice", source_name, 	{
+		"Sales Invoice": {
+			"doctype": "Paypal Configuration Page",
+			"validation": {
+				"docstatus": ["=", 1]
+			}
+		}
+		
+	}, target_doc, set_missing_values)
+
+	return doclist
+
+
+
+# PAypal PAyment Actual code for generation of payment and payer id
+@frappe.whitelist()
+def make_paypal_payment_entry(sales_invoice,paypal_amount,currency):
+	frappe.errprint("in make paypal payment entry")
+	credential_details=get_paypal_credentials()
+	#frappe.errprint(credential_details)
+	if credential_details:
+		obj=create_paypalrestsdkapi_object(credential_details)
+		redirect_url=create_paypal_payment(obj,credential_details,sales_invoice,paypal_amount,currency)
+	return redirect_url
+
+def get_paypal_credentials():
+	frappe.errprint("in get credentials")
+	credentials=frappe.db.sql("""select value from `tabSingles` where doctype='Paypal Configuration Page' and field in ('client_id','client_secret') """)
+	if credentials:
+		credential_details= list(itertools.chain.from_iterable(credentials))
+		return credential_details
+	else:
+		frappe.throw("Please specify paypal account credentials in Paypal Configuration Page")
+
+def create_paypalrestsdkapi_object(credential_details):
+	import paypalrestsdk
+	return paypalrestsdk.configure({
+		'mode': 'sandbox',
+		'client_id': credential_details[0],
+		'client_secret': credential_details[1]
+	})
+
+def create_paypal_payment(obj,credential_details,sales_invoice,paypal_amount,currency):
+	import paypalrestsdk
+	frappe.errprint(["amount",paypal_amount])
+	payment = paypalrestsdk.Payment({
+	"intent": "sale",
+	"payer": {
+		"payment_method": "paypal" },
+	"redirect_urls": {
+		"return_url": "http://localhost:9999/api/method/erpnext.accounts.doctype.sales_invoice.sales_invoice.get_parameters",
+		"cancel_url": "https://devtools-paypal.com/guide/pay_paypal/python?cancel=true" },
+	"transactions": [ {
+    "amount": {
+      "total": paypal_amount,
+      "currency": "USD" },
+    "description": sales_invoice }] })
+
+	payment.create()
+	#frappe.errprint(payment)
+	redirect_url=generate_payer_id(payment)
+	return redirect_url
+
+def generate_payer_id(payment):
+	frappe.errprint("in generate_payer_id")
+	import webbrowser
+	if payment:
+		for link in payment.links:
+			if link.method == "REDIRECT":
+				redirect_url = str(link.href)
+				frappe.errprint(redirect_url)
+	return redirect_url
+
+
+@frappe.whitelist()
+def update_paypal_amount(sales_invoice,paypal_amount):
+	frappe.errprint("in update_paypal_amount")
+	# amount=frappe.db.sql("""select paypal_amount from  `tabSales Invoice`
+	# 				 where name='%s'"""%(sales_invoice),as_list=1)
+	# if amount:
+	# 	final_amount=cstr(cint(amount[0][0])+cint(paypal_amount))
+	frappe.db.sql("""update `tabSales Invoice` set paypal_amount='%s'
+					 where name='%s' """%(paypal_amount,sales_invoice))
+	frappe.db.commit()
+	return paypal_amount
+
+
+@frappe.whitelist(allow_guest=True)
+def get_parameters(PayerID,paymentId,):
+	status=execute_paypal_payment_entry(PayerID,paymentId)
+	#return True
+
+def execute_paypal_payment_entry(PayerID,paymentId):
+	frappe.errprint("execute_paypal_payment_entry")
+	import paypalrestsdk
+	import webbrowser
+	credential_details=get_paypal_credentials()
+	payment=create_paypalrestsdkapi_object(credential_details)
+	payment = paypalrestsdk.Payment.find(paymentId)
+	status=payment.execute({"payer_id": PayerID})
+	frappe.msgprint("Payment Completed for Sales Invoice : '%s' having Payment Id: '%s' Payment Status: approved"%(payment.transactions[0]['description'],paymentId))
+	if status==True:
+	 	create_journal_entry(payment)
+		frappe.local.response["type"] = "redirect"
+		frappe.local.response["location"] = 'http://localhost:9999/desk#Form/Sales%20Invoice/'+payment.transactions[0]['description']+''
+		#frappe.msgprint("Payment Completed for Sales Invoice : '%s' having Payment Id: '%s' Payment Status: approved"%(payment.transactions[0]['description'],paymentId))
+	else:
+		frappe.errprint(payment.error)
+
+
+
+def create_journal_entry(payment):
+	frappe.errprint("in create journal entry")
+	#frappe.errprint(payment)
+	from erpnext.accounts.utils import get_balance_on
+	si = frappe.get_doc("Sales Invoice",payment.transactions[0]['description'])
+
+	jv = get_payment_entry(si)
+	jv.remark = 'Payment received against Sales Invoice {0}. {1}'.format(si.name, si.remarks)
+
+	# credit customer
+	jv.get("accounts")[0].account = si.debit_to
+	jv.get("accounts")[0].party_type = "Customer"
+	jv.get("accounts")[0].party = si.customer
+	jv.get("accounts")[0].balance = get_balance_on(si.debit_to)
+	jv.get("accounts")[0].party_balance = get_balance_on(party=si.customer, party_type="Customer")
+	jv.get("accounts")[0].credit = payment.transactions[0]['amount']['total']
+	jv.get("accounts")[0].against_invoice = si.name
+
+	# debit bank
+	jv.get("accounts")[1].debit = payment.transactions[0]['amount']['total']
+	jv.save(ignore_permissions=True)
+	jv.submit()
+	#return jv.as_dict()
+
+
+def get_payment_entry(doc):
+	frappe.errprint("get payment entry")
+	bank_account = get_default_bank_cash_account(doc.company, "Bank Entry")
+	#frappe.errprint(bank_account)
+	jv = frappe.new_doc('Journal Entry')
+	jv.voucher_type = 'Bank Entry'
+	jv.company = doc.company
+	jv.fiscal_year = doc.fiscal_year
+	jv.cheque_no = doc.name
+	jv.cheque_date = nowdate()
+	jv.posting_date = nowdate()
+	jv.append("accounts")
+	d2 = jv.append("accounts")
+	#frappe.errprint(d2)
+	if bank_account:
+		d2.account = bank_account["account"]
+		d2.balance = bank_account["balance"]
+	#frappe.errprint(jv)
+	return jv
+
+
+def get_default_bank_cash_account(company, voucher_type, mode_of_payment=None):
+	from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
+	if mode_of_payment:
+		account = get_bank_cash_account(mode_of_payment, company)
+		if account.get("account"):
+			account.update({"balance": get_balance_on(account.get("account"))})
+			return account
+
+	if voucher_type=="Bank Entry":
+		account = frappe.db.get_value("Company", company, "default_bank_account")
+		if not account:
+			account = frappe.db.get_value("Account", {"company": company, "account_type": "Bank"})
+	elif voucher_type=="Cash Entry":
+		account = frappe.db.get_value("Company", company, "default_cash_account")
+		if not account:
+			account = frappe.db.get_value("Account", {"company": company, "account_type": "Cash"})
+
+	if account:
+		return {
+			"account": account,
+			"balance": get_balance_on(account)
+		}

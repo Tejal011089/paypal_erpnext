@@ -3,7 +3,7 @@
 
 from __future__ import unicode_literals
 import frappe
-from frappe.utils import cint, formatdate, flt, getdate
+from frappe.utils import cint, formatdate, flt
 from frappe import msgprint, _, throw
 from erpnext.setup.utils import get_company_currency
 import frappe.defaults
@@ -39,7 +39,6 @@ class PurchaseInvoice(BuyingController):
 
 		self.po_required()
 		self.pr_required()
-		self.validate_supplier_invoice()
 		self.check_active_purchase_items()
 		self.check_conversion_rate()
 		self.validate_credit_to_acc()
@@ -88,7 +87,9 @@ class PurchaseInvoice(BuyingController):
 			throw(_("Conversion rate cannot be 0 or 1"))
 
 	def validate_credit_to_acc(self):
-		account_type = frappe.db.get_value("Account", self.credit_to, "account_type")
+		root_type, account_type = frappe.db.get_value("Account", self.credit_to, ["root_type", "account_type"])
+		if root_type != "Liability":
+			frappe.throw(_("Credit To account must be a liability account"))
 		if account_type != "Payable":
 			frappe.throw(_("Credit To account must be a Payable account"))
 
@@ -124,11 +125,20 @@ class PurchaseInvoice(BuyingController):
 			}
 		})
 
-		if cint(frappe.db.get_single_value('Buying Settings', 'maintain_same_rate')):
-			self.validate_rate_with_reference_doc([
-				["Purchase Order", "purchase_order", "po_detail"],
-				["Purchase Receipt", "purchase_receipt", "pr_detail"]
-			])
+		if cint(frappe.defaults.get_global_default('maintain_same_rate')):
+			super(PurchaseInvoice, self).validate_with_previous_doc({
+				"Purchase Order Item": {
+					"ref_dn_field": "po_detail",
+					"compare_fields": [["rate", "="]],
+					"is_child_table": True,
+					"allow_duplicate_prev_row_id": True
+				},
+				"Purchase Receipt Item": {
+					"ref_dn_field": "pr_detail",
+					"compare_fields": [["rate", "="]],
+					"is_child_table": True
+				}
+			})
 
 	def set_against_expense_account(self):
 		auto_accounting_for_stock = cint(frappe.defaults.get_global_default("auto_accounting_for_stock"))
@@ -155,7 +165,7 @@ class PurchaseInvoice(BuyingController):
 			elif item.expense_account not in against_accounts:
 				# if no auto_accounting_for_stock or not a stock item
 				against_accounts.append(item.expense_account)
-
+				
 		self.against_expense_account = ",".join(against_accounts)
 
 	def po_required(self):
@@ -262,7 +272,7 @@ class PurchaseInvoice(BuyingController):
 				gl_entries.append(
 					self.get_gl_dict({
 						"account": tax.account_head,
-						"against": self.supplier,
+						"against": self.credit_to,
 						"debit": tax.add_deduct_tax == "Add" and tax.base_tax_amount_after_discount_amount or 0,
 						"credit": tax.add_deduct_tax == "Deduct" and tax.base_tax_amount_after_discount_amount or 0,
 						"remarks": self.remarks,
@@ -286,7 +296,7 @@ class PurchaseInvoice(BuyingController):
 				gl_entries.append(
 					self.get_gl_dict({
 						"account": item.expense_account,
-						"against": self.supplier,
+						"against": self.credit_to,
 						"debit": item.base_net_amount,
 						"remarks": self.remarks,
 						"cost_center": item.cost_center
@@ -306,7 +316,7 @@ class PurchaseInvoice(BuyingController):
 						gl_entries.append(
 							self.get_gl_dict({
 								"account": stock_received_but_not_billed,
-								"against": self.supplier,
+								"against": self.credit_to,
 								"debit": flt(item.item_tax_amount, self.precision("item_tax_amount", item)),
 								"remarks": self.remarks or "Accounting Entry for Stock"
 							})
@@ -332,7 +342,7 @@ class PurchaseInvoice(BuyingController):
 					self.get_gl_dict({
 						"account": expenses_included_in_valuation,
 						"cost_center": cost_center,
-						"against": self.supplier,
+						"against": self.credit_to,
 						"credit": applicable_amount,
 						"remarks": self.remarks or "Accounting Entry for Stock"
 					})
@@ -346,7 +356,7 @@ class PurchaseInvoice(BuyingController):
 			gl_entries.append(
 				self.get_gl_dict({
 					"account": self.write_off_account,
-					"against": self.supplier,
+					"against": self.credit_to,
 					"credit": flt(self.write_off_amount),
 					"remarks": self.remarks,
 					"cost_center": self.write_off_cost_center
@@ -365,7 +375,7 @@ class PurchaseInvoice(BuyingController):
 		self.update_billing_status_for_zero_amount_refdoc("Purchase Order")
 		self.make_gl_entries_on_cancel()
 		self.update_project()
-
+		
 	def update_project(self):
 		project_list = []
 		for d in self.items:
@@ -375,17 +385,6 @@ class PurchaseInvoice(BuyingController):
 				project.update_purchase_costing()
 				project.save()
 				project_list.append(d.project_name)
-
-	def validate_supplier_invoice(self):
-		if self.bill_date:
-			if getdate(self.bill_date) > getdate(self.posting_date):
-				frappe.throw("Supplier Invoice Date cannot be greater than Posting Date")
-		if self.bill_no:
-			if cint(frappe.db.get_single_value("Accounts Settings", "check_supplier_invoice_uniqueness")):
-				pi = frappe.db.exists("Purchase Invoice", {"bill_no": self.bill_no,
-					"fiscal_year": self.fiscal_year, "name": ("!=", self.name)})
-				if pi:
-					frappe.throw("Supplier Invoice No exists in Purchase Invoice {0}".format(pi))
 
 @frappe.whitelist()
 def get_expense_account(doctype, txt, searchfield, start, page_len, filters):
@@ -402,4 +401,4 @@ def get_expense_account(doctype, txt, searchfield, start, page_len, filters):
 				and tabAccount.company = '%(company)s'
 				and tabAccount.%(key)s LIKE '%(txt)s'
 				%(mcond)s""" % {'company': filters['company'], 'key': searchfield,
-			'txt': "%%%s%%" % frappe.db.escape(txt), 'mcond':get_match_cond(doctype)})
+			'txt': "%%%s%%" % txt, 'mcond':get_match_cond(doctype)})

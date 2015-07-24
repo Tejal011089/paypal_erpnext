@@ -46,7 +46,7 @@ erpnext.feature_setup.feature_dict = {
 		'Purchase Invoice': {'items':['brand']},
 		'Quotation': {'items':['brand']},
 		'Sales Invoice': {'items':['brand']},
-		'Product Bundle': {'fields':['new_item_brand']},
+		'Sales BOM': {'fields':['new_item_brand']},
 		'Sales Order': {'items':['brand']},
 		'Serial No': {'fields':['brand']}
 	},
@@ -81,8 +81,7 @@ erpnext.feature_setup.feature_dict = {
 		'Item': {'fields': ['barcode']},
 		'Delivery Note': {'items': ['barcode']},
 		'Sales Invoice': {'items': ['barcode']},
-		'Stock Entry': {'items': ['barcode']},
-		'Purchase Receipt': {'items': ['barcode']}
+		'Stock Entry': {'items': ['barcode']}
 	},
 	'fs_item_group_in_details': {
 		'Delivery Note': {'items':['item_group']},
@@ -95,7 +94,7 @@ erpnext.feature_setup.feature_dict = {
 		'Purchase Voucher': {'items':['item_group']},
 		'Quotation': {'items':['item_group']},
 		'Sales Invoice': {'items':['item_group']},
-		'Product Bundle': {'fields':['serial_no']},
+		'Sales BOM': {'fields':['serial_no']},
 		'Sales Order': {'items':['item_group']},
 		'Serial No': {'fields':['item_group']},
 		'Sales Partner': {'targets':['item_group']},
@@ -129,7 +128,7 @@ erpnext.feature_setup.feature_dict = {
 				'base_total', 'base_net_total', 'base_discount_amount', 'base_total_taxes_and_charges'],
 			'items': ['base_price_list_rate','base_amount','base_rate', 'base_net_rate', 'base_net_amount']
 		},
-		'Product Bundle': {'fields':['currency']},
+		'Sales BOM': {'fields':['currency']},
 		'Sales Order': {
 			'fields': ['conversion_rate','currency','base_grand_total','base_in_words','base_rounded_total',
 				'base_total', 'base_net_total', 'base_discount_amount', 'base_total_taxes_and_charges'],

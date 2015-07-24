@@ -34,6 +34,9 @@ erpnext.accounts.SalesInvoiceController = erpnext.selling.SellingController.exte
 			locals.DocType[cur_frm.doctype].default_print_format = "POS Invoice";
 			cur_frm.setup_print_layout();
 		}
+		
+		//show_popup(this.frm.doc)
+
 	},
 
 	refresh: function(doc, dt, dn) {
@@ -72,6 +75,13 @@ erpnext.accounts.SalesInvoiceController = erpnext.selling.SellingController.exte
 			if(doc.outstanding_amount!=0) {
 				cur_frm.add_custom_button(__('Make Payment Entry'), cur_frm.cscript.make_bank_entry, "icon-money");
 			}
+
+			// Add button to generate paypal payment entry
+			if(doc.outstanding_amount!=0) {
+				cur_frm.add_custom_button(__('Create Paypal Payment'), cur_frm.cscript['make_payment'], "icon-money");
+			}
+
+
 		}
 
 		// Show buttons only when pos view is active
@@ -270,6 +280,14 @@ cur_frm.cscript['Make Delivery Note'] = function() {
 	})
 }
 
+cur_frm.cscript['Create Paypal Payment'] = function() {
+	frappe.model.open_mapped_doc({
+		method: "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_paypal_payment",
+		frm: cur_frm
+	})
+}
+
+
 cur_frm.cscript.make_bank_entry = function() {
 	return frappe.call({
 		method: "erpnext.accounts.doctype.journal_entry.journal_entry.get_payment_entry_from_sales_invoice",
@@ -282,6 +300,34 @@ cur_frm.cscript.make_bank_entry = function() {
 		}
 	});
 }
+
+// paypal payment entry method 
+cur_frm.cscript.make_payment = function(doc,cdt,cdn) {
+	console.log("in make payment")
+	show_popup(doc,cdt,cdn)
+
+}
+
+cur_frm.cscript.make_entry=function(doc,cdt,cdn,amount){
+	console.log("in make entry")
+	console.log(amount)
+		return frappe.call({
+				method: "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_paypal_payment_entry",
+				args: {
+					"sales_invoice": cur_frm.doc.name,
+					"paypal_amount":amount,
+					"currency":cur_frm.doc.currency
+					// "client_secret":cur_frm.doc.client_secret
+				},
+				callback: function(r) {
+					//console.log(r.message);
+					window.open(r.message, '_self', '')
+					
+				}
+			});
+	}
+
+
 
 cur_frm.fields_dict.debit_to.get_query = function(doc) {
 	return{
@@ -369,15 +415,15 @@ cur_frm.fields_dict["items"].grid.get_field("cost_center").get_query = function(
 }
 
 cur_frm.cscript.income_account = function(doc, cdt, cdn) {
-	erpnext.utils.copy_value_in_all_row(doc, cdt, cdn, "items", "income_account");
+	cur_frm.cscript.copy_account_in_all_row(doc, cdt, cdn, "income_account");
 }
 
 cur_frm.cscript.expense_account = function(doc, cdt, cdn) {
-	erpnext.utils.copy_value_in_all_row(doc, cdt, cdn, "items", "expense_account");
+	cur_frm.cscript.copy_account_in_all_row(doc, cdt, cdn, "expense_account");
 }
 
 cur_frm.cscript.cost_center = function(doc, cdt, cdn) {
-	erpnext.utils.copy_value_in_all_row(doc, cdt, cdn, "items", "cost_center");
+	cur_frm.cscript.copy_account_in_all_row(doc, cdt, cdn, "cost_center");
 }
 
 cur_frm.cscript.on_submit = function(doc, cdt, cdn) {
@@ -390,6 +436,10 @@ cur_frm.cscript.on_submit = function(doc, cdt, cdn) {
 	} else if(cur_frm.doc.is_pos) {
 		new_doc("Sales Invoice");
 	}
+
+	
+	//show_popup(doc,cdt,cdn)
+		
 }
 
 cur_frm.set_query("debit_to", function(doc) {
@@ -400,3 +450,49 @@ cur_frm.set_query("debit_to", function(doc) {
 		]
 	}
 });
+
+
+//pop up for entering the amount for transaction using paypal
+var show_popup = function(doc,cdt,cdn){
+		var d = new frappe.ui.Dialog({
+		title:frappe._('Get Paypal Payment Amount'),
+		fields: [
+
+			{fieldtype:'Data', fieldname:'amount',options:'<div id="count"></div>', label:frappe._('Payment Amount'), reqd:true, 
+				description: frappe._("Amount required for the paypal transactions")},
+
+			{fieldtype:'Button', fieldname:'done', label:frappe._('Done') }
+		]
+	})
+		var fd = d.fields_dict;
+		$(fd.done.input).click(function() {
+				var btn = this;
+				$(btn).set_working();
+				var values  = d.get_values();
+				if(!values) return;
+				//console.log(eval(values)['amount']);	
+				amount=eval(values)['amount'];
+				//console.log(amount)
+				frappe.call({
+					method: "erpnext.accounts.doctype.sales_invoice.sales_invoice.update_paypal_amount",
+					args: {
+						"sales_invoice": cur_frm.doc.name,
+						"paypal_amount":eval(values)['amount']
+						
+					},
+					callback: function(r) {
+						//console.log(r.message);
+						doc.paypal_amount=r.message;
+						refresh_field('paypal_amount');
+						//window.location.reload()
+				
+					}
+				});
+				cur_frm.cscript.make_entry(doc,cdt,cdn,amount)
+				$(btn).done_working();
+				d.hide();
+			});
+		d.show();
+		return true
+}
+	
